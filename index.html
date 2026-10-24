@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5,47 +6,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dark Visualizer</title>
 
-<style>
-    body {
-        background-color: black;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-    }
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+        }
 
-
-    * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-
-    }
-
-    html, body {
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-        background: #000;
-    }
-
-    #canvas {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        pointer-events: none;
-    }
+        #canvas {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
 
-
-    
 <canvas id="canvas"></canvas>
-
-
 
 <script>
 const canvas = document.getElementById('canvas');
@@ -53,16 +40,6 @@ const gl = canvas.getContext('webgl');
 
 if (!gl) {
     throw new Error('WebGL is not supported by this browser.');
-}
-
-function canvasResizer() {
-    const dpr = window.devicePixelRatio || 1;
-
-    canvas.width = Math.floor(window.innerWidth * dpr);
-    canvas.height = Math.floor(window.innerHeight * dpr);
-
-    gl.viewport(0, 0, canvas.width, canvas.height);
-    render();
 }
 
 const vertexSource = `
@@ -74,10 +51,124 @@ const vertexSource = `
 `;
 
 const fragmentSource = `
-    precision mediump float;
+    precision highp float;
+
+    uniform vec2 resolution;
+    uniform float time;
+    uniform vec2 mouse;
+    uniform vec2 mouseVelocity;
+
+    float hash(vec2 p) {
+        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+    }
+
+    float noise(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+
+        return mix(
+            mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+            mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x),
+            f.y
+        );
+    }
+
+    float fbm(vec2 p) {
+        float value = 0.0;
+        float amplitude = 0.5;
+
+        for (int i = 0; i < 5; i++) {
+            value += noise(p) * amplitude;
+            p = p * 2.0 + vec2(13.7, 9.2);
+            amplitude *= 0.5;
+        }
+
+        return value;
+    }
 
     void main() {
-        gl_FragColor = vec4(1.0, 0.0, 1.0, 1.0);
+        vec2 uv = (gl_FragCoord.xy * 2.0 - resolution.xy) / resolution.y;
+        vec2 m = (mouse * 2.0 - resolution.xy) / resolution.y;
+
+        float d = length(uv - m);
+        float speed = clamp(length(mouseVelocity) * 0.025, 0.0, 1.0);
+
+        float radius = 0.48 + speed * 0.12;
+        float influence = 1.0 - smoothstep(radius * 0.55, radius, d);
+
+        float t = time * 0.12;
+
+        vec2 p = uv;
+
+        vec2 delta = uv - m;
+        float angle = atan(delta.y, delta.x);
+
+        p += vec2(
+            sin(angle * 3.0 + t) * 0.035,
+            cos(angle * 2.0 - t) * 0.035
+        ) * influence;
+
+        p += vec2(
+            sin(p.y * 4.0 + t),
+            cos(p.x * 3.0 - t)
+        ) * 0.035 * influence;
+
+        float n1 = fbm(p * 5.0 + vec2(t * 0.3, -t * 0.2));
+        float n2 = fbm(p * 8.0 - vec2(t * 0.15, t * 0.2));
+
+        float field = n1 * 0.7 + n2 * 0.3;
+
+        float irregular = fbm(p * 3.5 + vec2(n2, n1) * 2.0);
+
+        vec3 black = vec3(0.0);
+        vec3 green = vec3(0.015, 0.35, 0.08);
+        vec3 teal = vec3(0.0, 0.35, 0.30);
+        vec3 cyan = vec3(0.05, 0.55, 0.85);
+        vec3 blue = vec3(0.08, 0.12, 0.65);
+        vec3 violet = vec3(0.35, 0.06, 0.65);
+        vec3 purple = vec3(0.55, 0.025, 0.30);
+        vec3 pink = vec3(0.75, 0.10, 0.40);
+        vec3 gold = vec3(0.55, 0.32, 0.06);
+
+        float palette = fract(
+            field * 1.8 +
+            irregular * 0.65 +
+            angle * 0.025
+        );
+
+        vec3 color = mix(green, teal, smoothstep(0.05, 0.25, palette));
+        color = mix(color, cyan, smoothstep(0.20, 0.38, palette));
+        color = mix(color, blue, smoothstep(0.32, 0.50, palette));
+        color = mix(color, violet, smoothstep(0.43, 0.61, palette));
+        color = mix(color, purple, smoothstep(0.55, 0.70, palette));
+        color = mix(color, pink, smoothstep(0.66, 0.80, palette));
+        color = mix(color, gold, smoothstep(0.83, 0.96, palette));
+
+        float blobs = smoothstep(
+            0.25,
+            0.72,
+            field + (irregular - 0.5) * 0.65
+        );
+
+        float contours = smoothstep(
+            0.025,
+            0.10,
+            abs(field - 0.5 + (irregular - 0.5) * 0.25)
+        );
+
+        color *= blobs;
+        color *= 0.65 + contours * 0.35;
+
+        float fade = influence * influence;
+
+        color *= fade;
+
+        float centerGlow = exp(-d * 7.0) * influence;
+
+        color += vec3(0.02, 0.08, 0.12) * centerGlow;
+
+        gl_FragColor = vec4(mix(black, color, influence), 1.0);
     }
 `;
 
@@ -113,11 +204,15 @@ if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
 
 gl.useProgram(program);
 
+const resolutionLocation = gl.getUniformLocation(program, 'resolution');
+const timeLocation = gl.getUniformLocation(program, 'time');
+const mouseLocation = gl.getUniformLocation(program, 'mouse');
+const mouseVelocityLocation = gl.getUniformLocation(program, 'mouseVelocity');
+
 const vertices = new Float32Array([
     -1.0, -1.0,
      1.0, -1.0,
     -1.0,  1.0,
-
     -1.0,  1.0,
      1.0, -1.0,
      1.0,  1.0
@@ -133,18 +228,92 @@ const positionLocation = gl.getAttribLocation(program, 'position');
 gl.enableVertexAttribArray(positionLocation);
 gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
 
-function render() {
-    gl.clearColor(0.0, 0.0, 0.0, 1.0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
+let targetMouseX = -10000;
+let targetMouseY = -10000;
+
+let mouseX = -10000;
+let mouseY = -10000;
+
+let mouseVelocityX = 0;
+let mouseVelocityY = 0;
+let mouseActive = false;
+
+window.addEventListener('mousemove', (event) => {
+    targetMouseX = event.clientX;
+    targetMouseY = window.innerHeight - event.clientY;
+    mouseActive = true;
+});
+
+window.addEventListener('mouseout', (event) => {
+    if (!event.relatedTarget) {
+        mouseActive = false;
+    }
+});
+
+const startTime = performance.now();
+
+let dpr = 1;
+
+function resizeCanvas() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    canvas.width = Math.floor(window.innerWidth * dpr);
+    canvas.height = Math.floor(window.innerHeight * dpr);
+
+    gl.viewport(0, 0, canvas.width, canvas.height);
 }
 
-canvasResizer();
+window.addEventListener('resize', resizeCanvas);
 
-window.addEventListener('resize', canvasResizer);
+resizeCanvas();
+
+function render() {
+    const smoothing = 0.09;
+
+    const previousMouseX = mouseX;
+    const previousMouseY = mouseY;
+
+    if (mouseActive) {
+        mouseX += (targetMouseX - mouseX) * smoothing;
+        mouseY += (targetMouseY - mouseY) * smoothing;
+    }
+
+    mouseVelocityX = mouseX - previousMouseX;
+    mouseVelocityY = mouseY - previousMouseY;
+
+    gl.clearColor(0.0, 0.0, 0.0, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    gl.uniform2f(
+        resolutionLocation,
+        canvas.width,
+        canvas.height
+    );
+
+    gl.uniform1f(
+        timeLocation,
+        (performance.now() - startTime) / 1000
+    );
+
+    gl.uniform2f(
+        mouseLocation,
+        mouseActive ? mouseX * dpr : -10000,
+        mouseActive ? mouseY * dpr : -10000
+    );
+
+    gl.uniform2f(
+        mouseVelocityLocation,
+        mouseVelocityX * dpr,
+        mouseVelocityY * dpr
+    );
+
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    requestAnimationFrame(render);
+}
+
+render();
 </script>
-
-
 
 </body>
 </html>
