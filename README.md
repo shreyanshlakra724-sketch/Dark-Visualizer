@@ -7,7 +7,12 @@ All of patterns are created fractcal brownian motion and coordinate geometry.
 
 
 #Tech Stack
+
 -HTML
 -Javascript
 -CSS
 -WebGL
+
+Made this project to learn more about webgl and using math for pattern generation.
+
+To run on your download the repository and run it via live server or open in any browser.
